@@ -96,6 +96,25 @@ async def webhook(request: Request):
     scan_id = scan.id
     session.close()
 
+    # PR Comment
+    if event == "pull_request":
+        pr_number = payload.get("number")
+        if pr_number:
+            risk = ai_result.get("risk_level", "UNKNOWN")
+            summary = ai_result.get("summary", "")
+            recommendation = ai_result.get("deploy_recommendation", "BLOCK")
+            emoji = "✅" if recommendation == "APPROVE" else "🚨"
+            comment = f"""## {emoji} AI-Powered DevSecOps Analysis
+
+**Risk Level:** `{risk}`
+**Recommendation:** `{recommendation}`
+
+**Summary:** {summary}
+
+---
+*Powered by AI DevSecOps Pipeline 🛡️*"""
+            await post_github_pr_comment(repo, pr_number, comment)
+
     return {
         "scan_id": scan_id,
         "repo": repo,
@@ -158,4 +177,17 @@ def reject_scan(scan_id: int):
     scan.status = "rejected"
     session.commit()
     session.close()
-    return {"message": "Deployment rejected", "scan_id": scan_id}
+    return {"message": "Deployment rejected", "scan_id": scan_id}# ─── GitHub PR Comment ───────────────────────────────────────────
+import httpx
+
+async def post_github_pr_comment(repo: str, pr_number: int, body: str):
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        return
+    url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    async with httpx.AsyncClient() as client:
+        await client.post(url, json={"body": body}, headers=headers)
