@@ -1,0 +1,7 @@
+__pycache__
+*.pyc
+*.pyo
+.env
+pipeline.db
+.git
+.github

@@ -1,0 +1,51 @@
+name: AI-Powered DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  security-analysis:
+    runs-on: ubuntu-latest
+    name: Security Analysis & AI Interpretation
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: |
+          pip install bandit pip-audit flake8
+
+      - name: Run Bandit SAST Analysis
+        run: |
+          bandit -r . -f json -o bandit-report.json || true
+
+      - name: Run pip-audit SCA Analysis
+        run: |
+          pip-audit --format json --output pip-audit-report.json || true
+
+      - name: Run Flake8 Quality Check
+        run: |
+          flake8 . --max-line-length=120 --exclude=.github,__pycache__ || true
+
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+            pip-audit-report.json
+
+      - name: Security Gate Check
+        run: |
+          echo "✅ Security analysis complete"
+          echo "📊 Reports uploaded as artifacts"
+          echo "🤖 AI interpretation handled by FastAPI backend"
