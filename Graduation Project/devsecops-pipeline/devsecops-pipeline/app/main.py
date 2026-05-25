@@ -39,9 +39,12 @@ def verify_signature(payload: bytes, signature: str) -> bool:
     expected = "sha256=" + hmac.new(secret, payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
-@app.get("/")
-def root():
-    return {"status": "DevSecOps Pipeline running"}
+async def trigger_render_deploy():
+    hook_url = os.getenv("RENDER_DEPLOY_HOOK")
+    if not hook_url:
+        return
+    async with httpx.AsyncClient() as client:
+        await client.get(hook_url)
 
 async def post_github_pr_comment(repo: str, pr_number: int, body: str):
     token = os.getenv("GITHUB_TOKEN")
@@ -74,16 +77,26 @@ async def run_analysis(payload: dict, event: str):
     pip_audit = run_pip_audit(requirements if requirements else "")
     ai_result = interpret_findings(bandit, pip_audit, code_sample)
 
+    risk_level = ai_result.get("risk_level", "UNKNOWN")
+    deploy_recommendation = ai_result.get("deploy_recommendation", "BLOCK")
+
+    # Otomatik deploy kararı
+    if risk_level in ["LOW", "MEDIUM"] and deploy_recommendation == "APPROVE":
+        status = "auto_approved"
+        await trigger_render_deploy()
+    else:
+        status = "pending"  # Manuel onay bekleyecek
+
     session = Session()
     scan = ScanResult(
         repo=repo,
         commit=commit,
         pusher=pusher,
-        risk_level=ai_result.get("risk_level", "UNKNOWN"),
+        risk_level=risk_level,
         summary=ai_result.get("summary", ""),
         findings=json.dumps(ai_result.get("findings", [])),
-        deploy_recommendation=ai_result.get("deploy_recommendation", "BLOCK"),
-        status="analyzed"
+        deploy_recommendation=deploy_recommendation,
+        status=status
     )
     session.add(scan)
     session.commit()
@@ -93,20 +106,23 @@ async def run_analysis(payload: dict, event: str):
     if event == "pull_request":
         pr_number = payload.get("number")
         if pr_number:
-            risk = ai_result.get("risk_level", "UNKNOWN")
-            summary = ai_result.get("summary", "")
             recommendation = ai_result.get("deploy_recommendation", "BLOCK")
             emoji = "✅" if recommendation == "APPROVE" else "🚨"
             comment = f"""## {emoji} AI-Powered DevSecOps Analysis
 
-**Risk Level:** `{risk}`
+**Risk Level:** `{risk_level}`
 **Recommendation:** `{recommendation}`
+**Auto Deploy:** `{"YES" if status == "auto_approved" else "NO - Manual approval required"}`
 
-**Summary:** {summary}
+**Summary:** {ai_result.get("summary", "")}
 
 ---
 *Powered by AI DevSecOps Pipeline 🛡️*"""
             await post_github_pr_comment(repo, pr_number, comment)
+
+@app.get("/")
+def root():
+    return {"status": "DevSecOps Pipeline running"}
 
 @app.post("/webhook")
 async def webhook(request: Request, background_tasks: BackgroundTasks):
@@ -160,7 +176,7 @@ def get_scan(scan_id: int):
     }
 
 @app.post("/scans/{scan_id}/approve")
-def approve_scan(scan_id: int):
+async def approve_scan(scan_id: int):
     session = Session()
     scan = session.query(ScanResult).filter(ScanResult.id == scan_id).first()
     if not scan:
@@ -169,7 +185,8 @@ def approve_scan(scan_id: int):
     scan.status = "approved"
     session.commit()
     session.close()
-    return {"message": "Deployment approved", "scan_id": scan_id}
+    await trigger_render_deploy()
+    return {"message": "Deployment approved and triggered", "scan_id": scan_id}
 
 @app.post("/scans/{scan_id}/reject")
 def reject_scan(scan_id: int):
