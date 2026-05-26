@@ -15,7 +15,8 @@ app = FastAPI(title="DevSecOps Pipeline")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # Database setup
-engine = create_engine("sqlite:///pipeline.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://devsecops_db_se1q_user:pvPl1XKzXZ7mcAXJASAX9WEd0rDBLZWz@dpg-d8apn3reo5us739tbj20-a/devsecops_db_se1q")
+engine = create_engine(DATABASE_URL)
 Base = declarative_base()
 
 class ScanResult(Base):
