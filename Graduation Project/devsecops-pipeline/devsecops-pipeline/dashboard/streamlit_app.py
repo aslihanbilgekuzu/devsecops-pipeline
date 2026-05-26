@@ -2,7 +2,7 @@ import streamlit as st
 import httpx
 import json
 
-API_URL = "http://localhost:8000"
+API_URL = "https://devsecops-pipeline-kzos.onrender.com"
 
 st.set_page_config(page_title="DevSecOps Pipeline", page_icon="🛡️", layout="wide")
 
