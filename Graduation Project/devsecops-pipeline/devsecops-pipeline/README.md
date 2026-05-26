@@ -6,3 +6,4 @@ AI-Powered DevSecOps Pipeline - Graduation Project
 # auto deploy test
 
 test
+# auto-approve test
