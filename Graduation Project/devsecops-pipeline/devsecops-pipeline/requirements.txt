@@ -7,4 +7,5 @@ pip-audit==2.7.3
 google-generativeai==0.8.3
 streamlit==1.39.0
 sqlalchemy==2.0.36
-aiosqlite==0.20.0psycopg2-binary
+aiosqlite==0.20.0
+psycopg2-binary
