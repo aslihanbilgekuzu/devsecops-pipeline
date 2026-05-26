@@ -14,3 +14,4 @@ DB_PASSWORD = "admin123"
 # Command injection
 def run_command(user_input):
     os.system("ls " + user_input)
+# trigger
