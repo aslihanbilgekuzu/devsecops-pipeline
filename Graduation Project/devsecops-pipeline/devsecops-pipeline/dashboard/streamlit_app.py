@@ -27,7 +27,7 @@ st.sidebar.header("📊 Pipeline Status")
 scans = get_scans()
 total = len(scans)
 critical = sum(1 for s in scans if s["risk_level"] == "CRITICAL")
-approved = sum(1 for s in scans if s["status"] == "approved")
+approved = sum(1 for s in scans if s["status"] in ["approved", "auto_approved"])
 
 st.sidebar.metric("Total Scans", total)
 st.sidebar.metric("Critical Issues", critical)
@@ -83,7 +83,7 @@ else:
     for scan in scans:
         risk = scan["risk_level"]
         color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
-        status_icon = {"approved": "✅", "rejected": "❌", "pending": "⏳", "analyzed": "🔍"}.get(scan["status"], "❓")
+        status_icon = {"approved": "✅", "auto_approved": "🚀", "rejected": "❌", "pending": "⏳", "analyzed": "🔍"}.get(scan["status"], "❓")
         
         with st.expander(f"{color} {scan['repo']} — commit `{scan['commit']}` {status_icon} {scan['created_at'][:16]}"):
             col1, col2, col3 = st.columns(3)
