@@ -101,7 +101,7 @@ else:
                     st.markdown(f"- {sev_color} **{f.get('issue')}**: {f.get('explanation')}")
                     st.markdown(f"  💡 *Fix: {f.get('fix')}*")
             
-            if scan["status"] in ["analyzed", "pending"]:
+            if scan["status"] in ["analyzed", "pending", "auto_approved"]:
                 col_a, col_r = st.columns(2)
                 if col_a.button(f"✅ Approve Deploy", key=f"approve_{scan['id']}"):
                     approve(scan["id"])

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-import hmac, hashlib, json, os, asyncio
+import hmac, hashlib, json, os, base64
 from dotenv import load_dotenv
 from app.analyzer import run_bandit, run_pip_audit
 from app.ai_interpreter import interpret_findings
@@ -15,7 +15,7 @@ app = FastAPI(title="DevSecOps Pipeline")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 # Database setup
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://devsecops_db_se1q_user:pvPl1XKzXZ7mcAXJASAX9WEd0rDBLZWz@dpg-d8apn3reo5us739tbj20-a/devsecops_db_se1q")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///pipeline.db")
 engine = create_engine(DATABASE_URL)
 Base = declarative_base()
 
@@ -59,23 +59,50 @@ async def post_github_pr_comment(repo: str, pr_number: int, body: str):
         "Authorization": f"token {token}",
         "Accept": "application/vnd.github.v3+json"
     }
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         await client.post(url, json={"body": body}, headers=headers)
+
+async def fetch_file_content(repo: str, commit: str, filename: str) -> str:
+    token = os.getenv("GITHUB_TOKEN")
+    if not token:
+        return ""
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    url = f"https://api.github.com/repos/{repo}/contents/{filename}?ref={commit}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(url, headers=headers)
+            if r.status_code == 200:
+                content = r.json().get("content", "")
+                return base64.b64decode(content).decode("utf-8", errors="ignore")
+    except Exception as e:
+        print(f"File fetch error: {e}")
+    return ""
 
 async def run_analysis(payload: dict, event: str):
     repo = payload.get("repository", {}).get("full_name", "unknown")
-    commit = payload.get("after", "unknown")[:7]
+    commit = payload.get("after", "unknown")
     pusher = payload.get("pusher", {}).get("name", "unknown")
-    
+
     code_sample = payload.get("code", "")
     requirements = payload.get("requirements", "")
-    
+
     if not code_sample:
         commits = payload.get("commits", [])
-        code_sample = f"# Repo: {repo}\n# Commit: {commit}\n# Pusher: {pusher}\n"
-        if commits:
-            added = commits[0].get("added", []) + commits[0].get("modified", [])
-            code_sample += f"# Changed files: {', '.join(added[:5])}\n"
+        code_sample = f"# Repo: {repo}\n# Commit: {commit[:7]}\n# Pusher: {pusher}\n"
+        if commits and os.getenv("GITHUB_TOKEN"):
+            changed_files = commits[0].get("added", []) + commits[0].get("modified", [])
+            py_files = [f for f in changed_files if f.endswith(".py")][:3]
+            for filename in py_files:
+                content = await fetch_file_content(repo, commit, filename)
+                if content:
+                    code_sample += f"\n# File: {filename}\n{content}\n"
+            if not py_files:
+                code_sample += f"# Changed files: {', '.join(changed_files[:5])}\n"
+
+    commit = commit[:7]
 
     bandit = run_bandit(code_sample)
     pip_audit = run_pip_audit(requirements if requirements else "")
@@ -84,12 +111,11 @@ async def run_analysis(payload: dict, event: str):
     risk_level = ai_result.get("risk_level", "UNKNOWN")
     deploy_recommendation = ai_result.get("deploy_recommendation", "BLOCK")
 
-    # Otomatik deploy kararı
     if risk_level in ["LOW", "MEDIUM"] and deploy_recommendation == "APPROVE":
         status = "auto_approved"
         await trigger_render_deploy()
     else:
-        status = "pending"  # Manuel onay bekleyecek
+        status = "pending"
 
     session = Session()
     scan = ScanResult(
@@ -132,16 +158,16 @@ def root():
 async def webhook(request: Request, background_tasks: BackgroundTasks):
     payload_bytes = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
-    
+
     if signature and not verify_signature(payload_bytes, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
-    
+
     try:
         payload = json.loads(payload_bytes)
     except:
         payload = await request.json()
     event = request.headers.get("X-GitHub-Event", "push")
-    
+
     if event not in ["push", "pull_request"]:
         return {"message": "Event ignored"}
 
