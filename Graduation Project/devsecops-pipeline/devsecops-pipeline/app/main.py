@@ -43,8 +43,11 @@ async def trigger_render_deploy():
     hook_url = os.getenv("RENDER_DEPLOY_HOOK")
     if not hook_url:
         return
-    async with httpx.AsyncClient() as client:
-        await client.get(hook_url)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.get(hook_url)
+    except Exception as e:
+        print(f"Deploy hook error (non-fatal): {e}")
 
 async def post_github_pr_comment(repo: str, pr_number: int, body: str):
     token = os.getenv("GITHUB_TOKEN")
