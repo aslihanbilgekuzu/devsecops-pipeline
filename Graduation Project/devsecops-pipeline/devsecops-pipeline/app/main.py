@@ -281,3 +281,11 @@ async def rollback_scan(scan_id: int):
         "rolled_back_from_commit": current_scan.commit,
         "rolled_back_to_commit": rollback_commit
     }
+
+@app.get("/test-rollback")
+def test_rollback():
+    return {"rollback": "endpoint exists"}
+
+@app.get("/test-rollback")
+def test_rollback():
+    return {"rollback": "endpoint exists"}
