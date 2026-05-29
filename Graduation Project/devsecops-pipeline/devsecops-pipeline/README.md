@@ -95,7 +95,7 @@ devsecops-pipeline/
 **1. Clone and install:**
 ```bash
 git clone https://github.com/aslihanbilgekuzu/devsecops-pipeline.git
-cd devsecops-pipeline
+cd devsecops-pipeline/devsecops-pipeline
 pip install -r requirements.txt
 ```
 
@@ -133,7 +133,7 @@ streamlit run dashboard/streamlit_app.py
 **Scenario 1 — Clean code:**
 ```bash
 # Push safe Python code → system auto-approves and deploys
-git push origin main
+git push origin master
 # Result: risk_level: LOW, status: auto_approved ✅
 ```
 
@@ -185,12 +185,3 @@ git push origin main
 
 ---
 
-## References
-
-1. Gulabovska & Porkoláb — *Evaluation of Static Analysis Methods of Python Programs* (2020)
-2. Aljohani & Alqahtani — *A Unified Framework for Automating Software Security Analysis in DevSecOps* (2020)
-3. Malik & Prashasti — *Shift Left Security* (2025)
-4. Allam — *Security-Driven Pipelines: Embedding DevSecOps into CI/CD Workflows* (2022)
-5. Rafiey & Namadchian — *Using LLMs as AI Agents to Identify False Positive Alerts in SOC* (2024)
-6. Du et al. — *Minimizing False Positives in Static Bug Detection via LLM-Enhanced Path Feasibility Analysis* (2025)
-7. Holzinger et al. — *Human-in-the-Loop Integration with Domain-Knowledge Graphs* (2021)
