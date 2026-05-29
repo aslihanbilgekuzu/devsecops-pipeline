@@ -22,8 +22,6 @@ def approve(scan_id):
 def reject(scan_id):
     httpx.post(f"{API_URL}/scans/{scan_id}/reject", timeout=10)
 
-def rollback(scan_id):
-    httpx.post(f"{API_URL}/scans/{scan_id}/rollback", timeout=10)
 
 # Sidebar
 st.sidebar.header("📊 Pipeline Status")
@@ -123,15 +121,3 @@ else:
                     st.error("Rejected!")
                     st.rerun()
 
-            # Onaylanmış taramalar — Rollback butonu
-            if scan["status"] == "approved":
-                st.divider()
-                if st.button("↩️ Rollback to Previous Safe Deploy", key=f"rollback_{scan['id']}"):
-                    with st.spinner("Rolling back..."):
-                        rollback(scan["id"])
-                    st.warning(f"Rollback triggered! Reverting commit `{scan['commit']}`.")
-                    st.rerun()
-
-            # Geri alınmış taramalar — bilgi mesajı
-            if scan["status"] == "rolled_back":
-                st.info("↩️ This deployment was rolled back to a previous safe version.")
