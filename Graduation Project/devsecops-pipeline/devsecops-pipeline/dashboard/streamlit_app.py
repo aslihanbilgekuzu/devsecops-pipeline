@@ -22,6 +22,9 @@ def approve(scan_id):
 def reject(scan_id):
     httpx.post(f"{API_URL}/scans/{scan_id}/reject", timeout=10)
 
+def rollback(scan_id):
+    httpx.post(f"{API_URL}/scans/{scan_id}/rollback", timeout=10)
+
 # Sidebar
 st.sidebar.header("📊 Pipeline Status")
 scans = get_scans()
@@ -83,7 +86,14 @@ else:
     for scan in scans:
         risk = scan["risk_level"]
         color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
-        status_icon = {"approved": "✅", "auto_approved": "🚀", "rejected": "❌", "pending": "⏳", "analyzed": "🔍"}.get(scan["status"], "❓")
+        status_icon = {
+            "approved": "✅",
+            "auto_approved": "🚀",
+            "rejected": "❌",
+            "pending": "⏳",
+            "analyzed": "🔍",
+            "rolled_back": "↩️"
+        }.get(scan["status"], "❓")
         
         with st.expander(f"{color} {scan['repo']} — commit `{scan['commit']}` {status_icon} {scan['created_at'][:16]}"):
             col1, col2, col3 = st.columns(3)
@@ -100,14 +110,28 @@ else:
                     sev_color = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(f.get("severity"), "⚪")
                     st.markdown(f"- {sev_color} **{f.get('issue')}**: {f.get('explanation')}")
                     st.markdown(f"  💡 *Fix: {f.get('fix')}*")
-            
-            if scan["status"] in ["analyzed", "pending", "auto_approved"]:
+
+            # Karar bekleyen taramalar — Approve / Reject
+            if scan["status"] in ["analyzed", "pending"]:
                 col_a, col_r = st.columns(2)
-                if col_a.button(f"✅ Approve Deploy", key=f"approve_{scan['id']}"):
+                if col_a.button("✅ Approve Deploy", key=f"approve_{scan['id']}"):
                     approve(scan["id"])
                     st.success("Approved!")
                     st.rerun()
-                if col_r.button(f"❌ Reject Deploy", key=f"reject_{scan['id']}"):
+                if col_r.button("❌ Reject Deploy", key=f"reject_{scan['id']}"):
                     reject(scan["id"])
                     st.error("Rejected!")
                     st.rerun()
+
+            # Onaylanmış taramalar — Rollback butonu
+            if scan["status"] == "approved":
+                st.divider()
+                if st.button("↩️ Rollback to Previous Safe Deploy", key=f"rollback_{scan['id']}"):
+                    with st.spinner("Rolling back..."):
+                        rollback(scan["id"])
+                    st.warning(f"Rollback triggered! Reverting commit `{scan['commit']}`.")
+                    st.rerun()
+
+            # Geri alınmış taramalar — bilgi mesajı
+            if scan["status"] == "rolled_back":
+                st.info("↩️ This deployment was rolled back to a previous safe version.")

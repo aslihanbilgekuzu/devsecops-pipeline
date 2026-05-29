@@ -50,6 +50,23 @@ async def trigger_render_deploy():
     except Exception as e:
         print(f"Deploy hook error (non-fatal): {e}")
 
+async def trigger_rollback_deploy():
+    """Render API üzerinden önceki deploy'u yeniden tetikler."""
+    api_key = os.getenv("RENDER_API_KEY")
+    service_id = os.getenv("RENDER_SERVICE_ID", "srv-d88qms0jo6nc73d7ctkg")
+    if not api_key:
+        print("RENDER_API_KEY not found, falling back to deploy hook")
+        await trigger_render_deploy()
+        return
+    headers = {"Authorization": f"Bearer {api_key}"}
+    url = f"https://api.render.com/v1/services/{service_id}/deploys"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(url, headers=headers, json={"clearCache": "do_not_clear"})
+            print(f"Rollback deploy triggered: {r.status_code}")
+    except Exception as e:
+        print(f"Rollback deploy error (non-fatal): {e}")
+
 async def post_github_pr_comment(repo: str, pr_number: int, body: str):
     token = os.getenv("GITHUB_TOKEN")
     if not token:
@@ -229,3 +246,38 @@ def reject_scan(scan_id: int):
     session.commit()
     session.close()
     return {"message": "Deployment rejected", "scan_id": scan_id}
+
+@app.post("/scans/{scan_id}/rollback")
+async def rollback_scan(scan_id: int):
+    session = Session()
+
+    # Mevcut scan'i bul
+    current_scan = session.query(ScanResult).filter(ScanResult.id == scan_id).first()
+    if not current_scan:
+        session.close()
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    # Bu scan'den önceki son temiz scan'i bul
+    previous_safe = session.query(ScanResult).filter(
+        ScanResult.id < scan_id,
+        ScanResult.status.in_(["approved", "auto_approved"])
+    ).order_by(ScanResult.id.desc()).first()
+
+    if not previous_safe:
+        session.close()
+        raise HTTPException(status_code=404, detail="No previous safe deployment found to roll back to")
+
+    # Mevcut scan'i rolled_back olarak işaretle
+    current_scan.status = "rolled_back"
+    rollback_commit = previous_safe.commit
+    session.commit()
+    session.close()
+
+    # Render'da yeniden deploy tetikle
+    await trigger_rollback_deploy()
+
+    return {
+        "message": f"Rollback triggered successfully",
+        "rolled_back_from_commit": current_scan.commit,
+        "rolled_back_to_commit": rollback_commit
+    }
