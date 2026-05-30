@@ -8,6 +8,9 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 import httpx
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 load_dotenv()
 
@@ -67,6 +70,35 @@ async def trigger_rollback_deploy():
     except Exception as e:
         print(f"Rollback deploy error (non-fatal): {e}")
 
+
+def send_critical_alert_email(repo: str, commit: str, risk_level: str, findings: list):
+    gmail_user = os.getenv("GMAIL_USER")
+    gmail_password = os.getenv("GMAIL_APP_PASSWORD")
+    if not gmail_user or not gmail_password:
+        return
+    findings_text = "\n".join([f"- {f.get('issue', '')}: {f.get('explanation', '')}" for f in findings[:5]])
+    body = f"""⚠️ CRITICAL Security Alert - DevSecOps Pipeline
+
+Repo: {repo}
+Commit: {commit}
+Risk Level: {risk_level}
+
+Findings:
+{findings_text}
+
+→ Review on Dashboard: https://devsecops-dashboard-zcbu.onrender.com
+"""
+    msg = MIMEMultipart()
+    msg["From"] = gmail_user
+    msg["To"] = gmail_user
+    msg["Subject"] = f"🔴 CRITICAL Alert: {repo} - {commit[:7]}"
+    msg.attach(MIMEText(body, "plain"))
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(gmail_user, gmail_password)
+            server.send_message(msg)
+    except Exception as e:
+        print(f"Email error: {e}")
 async def post_github_pr_comment(repo: str, pr_number: int, body: str):
     token = os.getenv("GITHUB_TOKEN")
     if not token:
@@ -136,6 +168,7 @@ async def run_analysis(payload: dict, event: str):
         await trigger_render_deploy()
     else:
         status = "pending"
+        send_critical_alert_email(repo, commit, risk_level, ai_result.get("findings", []))
 
     session = Session()
     scan = ScanResult(
