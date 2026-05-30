@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import hmac, hashlib, json, os, base64
 from dotenv import load_dotenv
-from app.analyzer import run_bandit, run_pip_audit, run_flake8, run_gitleaks
+from app.analyzer import run_bandit, run_pip_audit, run_flake8, run_gitleaks, run_semgrep
 from app.ai_interpreter import interpret_findings
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -125,7 +125,8 @@ async def run_analysis(payload: dict, event: str):
     pip_audit = run_pip_audit(requirements if requirements else "")
     flake8 = run_flake8(code_sample)
     gitleaks = run_gitleaks(code_sample)
-    ai_result = interpret_findings(bandit, pip_audit, code_sample, flake8, gitleaks)
+    semgrep = run_semgrep(code_sample)
+    ai_result = interpret_findings(bandit, pip_audit, code_sample, flake8, gitleaks, semgrep)
 
     risk_level = ai_result.get("risk_level", "UNKNOWN")
     deploy_recommendation = ai_result.get("deploy_recommendation", "BLOCK")

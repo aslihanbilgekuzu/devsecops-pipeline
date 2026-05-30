@@ -80,3 +80,22 @@ def run_gitleaks(code: str) -> dict:
         return {"tool": "gitleaks", "secrets": [], "error": str(e)}
     finally:
         os.unlink(tmp_path)
+
+
+def run_semgrep(code: str) -> dict:
+    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+        f.write(code)
+        tmp_path = f.name
+    try:
+        result = subprocess.run(
+            ["semgrep", "--config=p/python", "--json", tmp_path],
+            capture_output=True, text=True
+        )
+        data = json.loads(result.stdout) if result.stdout else {}
+        issues = data.get("results", [])
+        simplified = [{"rule": i.get("check_id", ""), "message": i.get("extra", {}).get("message", ""), "severity": i.get("extra", {}).get("severity", "")} for i in issues]
+        return {"tool": "semgrep", "issues": simplified, "count": len(simplified)}
+    except Exception as e:
+        return {"tool": "semgrep", "issues": [], "error": str(e)}
+    finally:
+        os.unlink(tmp_path)
