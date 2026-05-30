@@ -44,3 +44,4 @@ if __name__ == "__main__":
     run_command("/home")
     print(f"Using API key: {API_KEY}")
 # gitleaks test
+# semgrep test
