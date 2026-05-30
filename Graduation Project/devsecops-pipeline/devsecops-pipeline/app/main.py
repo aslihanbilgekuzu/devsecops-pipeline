@@ -47,6 +47,7 @@ async def trigger_render_deploy():
     hook_url = os.getenv("RENDER_DEPLOY_HOOK")
     if not hook_url:
         return
+    print(f"Sending email to {gmail_user}", flush=True)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.get(hook_url)
@@ -63,6 +64,7 @@ async def trigger_rollback_deploy():
         return
     headers = {"Authorization": f"Bearer {api_key}"}
     url = f"https://api.render.com/v1/services/{service_id}/deploys"
+    print(f"Sending email to {gmail_user}", flush=True)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.post(url, headers=headers, json={"clearCache": "do_not_clear"})
@@ -93,6 +95,7 @@ Findings:
     msg["To"] = gmail_user
     msg["Subject"] = f"🔴 CRITICAL Alert: {repo} - {commit[:7]}"
     msg.attach(MIMEText(body, "plain"))
+    print(f"Sending email to {gmail_user}", flush=True)
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(gmail_user, gmail_password)
@@ -120,6 +123,7 @@ async def fetch_file_content(repo: str, commit: str, filename: str) -> str:
         "Accept": "application/vnd.github.v3+json"
     }
     url = f"https://api.github.com/repos/{repo}/contents/{filename}?ref={commit}"
+    print(f"Sending email to {gmail_user}", flush=True)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(url, headers=headers)
@@ -215,6 +219,7 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
     if signature and not verify_signature(payload_bytes, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
+    print(f"Sending email to {gmail_user}", flush=True)
     try:
         payload = json.loads(payload_bytes)
     except:
