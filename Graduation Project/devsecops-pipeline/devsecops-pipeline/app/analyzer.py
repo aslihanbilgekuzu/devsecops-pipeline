@@ -61,3 +61,22 @@ def run_flake8(code: str) -> dict:
         return {"tool": "flake8", "issues": [], "error": str(e)}
     finally:
         os.unlink(tmp_path)
+
+
+def run_gitleaks(code: str) -> dict:
+    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+        f.write(code)
+        tmp_path = f.name
+    try:
+        result = subprocess.run(
+            ["gitleaks", "detect", "--source", tmp_path, "--no-git", "-f", "json", "-r", "/dev/stdout"],
+            capture_output=True, text=True
+        )
+        findings = json.loads(result.stdout) if result.stdout.strip() else []
+        if isinstance(findings, dict):
+            findings = [findings]
+        return {"tool": "gitleaks", "secrets": findings, "count": len(findings)}
+    except Exception as e:
+        return {"tool": "gitleaks", "secrets": [], "error": str(e)}
+    finally:
+        os.unlink(tmp_path)

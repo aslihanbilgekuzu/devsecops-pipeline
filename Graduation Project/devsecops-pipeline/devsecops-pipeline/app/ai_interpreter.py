@@ -5,12 +5,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def interpret_findings(bandit_result: dict, pip_audit_result: dict, code_snippet: str = "", flake8_result: dict = None) -> dict:
+def interpret_findings(bandit_result: dict, pip_audit_result: dict, code_snippet: str = "", flake8_result: dict = None, gitleaks_result: dict = None) -> dict:
     prompt = f"""You are a senior security engineer. Analyze these findings and respond ONLY with valid JSON.
 
 SAST findings (Bandit): {json.dumps(bandit_result, indent=2)}
 Dependency vulnerabilities (pip-audit): {json.dumps(pip_audit_result, indent=2)}
 Code quality issues (Flake8): {json.dumps(flake8_result or {}, indent=2)}
+Secret detection (Gitleaks): {json.dumps(gitleaks_result or {}, indent=2)}
 Code snippet: {code_snippet[:2000] if code_snippet else "Not provided"}
 
 Respond ONLY with this JSON structure, no extra text:
