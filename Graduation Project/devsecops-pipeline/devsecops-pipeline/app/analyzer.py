@@ -37,3 +37,27 @@ def run_pip_audit(requirements: str) -> dict:
         return {"tool": "pip_audit", "vulnerable_packages": [], "error": str(e)}
     finally:
         os.unlink(tmp_path)
+
+def run_flake8(code: str) -> dict:
+    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+        f.write(code)
+        tmp_path = f.name
+    try:
+        result = subprocess.run(
+            ["flake8", "--max-line-length=120", "--format=json", tmp_path],
+            capture_output=True, text=True
+        )
+        issues = []
+        for line in result.stdout.splitlines():
+            parts = line.split(":")
+            if len(parts) >= 4:
+                issues.append({
+                    "line": parts[1].strip(),
+                    "col": parts[2].strip(),
+                    "message": ":".join(parts[3:]).strip()
+                })
+        return {"tool": "flake8", "issues": issues, "count": len(issues)}
+    except Exception as e:
+        return {"tool": "flake8", "issues": [], "error": str(e)}
+    finally:
+        os.unlink(tmp_path)
