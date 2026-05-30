@@ -126,7 +126,7 @@ streamlit run dashboard/streamlit_app.py
 |---|---|
 | Backend API | https://devsecops-pipeline-kzos.onrender.com |
 | API Docs | https://devsecops-pipeline-kzos.onrender.com/docs |
-| Dashboard | Run locally: `streamlit run dashboard/streamlit_app.py` |
+| Dashboard | https://devsecops-dashboard-zcbu.onrender.com |
 
 ### Demo Scenario
 
