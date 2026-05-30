@@ -90,7 +90,7 @@ Findings:
 """
     msg = MIMEMultipart()
     msg["From"] = gmail_user
-    msg["To"] = gmail_user
+    msg["To"] = 210504003@gmail.com
     msg["Subject"] = f"🔴 CRITICAL Alert: {repo} - {commit[:7]}"
     msg.attach(MIMEText(body, "plain"))
 
@@ -217,7 +217,6 @@ async def webhook(request: Request, background_tasks: BackgroundTasks):
     if signature and not verify_signature(payload_bytes, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
 
-    print(f"Sending email to {gmail_user}", flush=True)
     try:
         payload = json.loads(payload_bytes)
     except:
