@@ -90,7 +90,7 @@ Findings:
 """
     msg = MIMEMultipart()
     msg["From"] = gmail_user
-    msg["To"] = "210504003@st.atlas.edu.tr"
+    msg["To"] = "aslihanbilgekuzu@gmail.com"
     msg["Subject"] = f"🔴 CRITICAL Alert: {repo} - {commit[:7]}"
     msg.attach(MIMEText(body, "plain"))
 
