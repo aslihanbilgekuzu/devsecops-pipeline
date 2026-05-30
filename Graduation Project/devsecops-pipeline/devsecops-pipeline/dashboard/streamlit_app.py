@@ -22,20 +22,47 @@ def approve(scan_id):
 def reject(scan_id):
     httpx.post(f"{API_URL}/scans/{scan_id}/reject", timeout=10)
 
+def calculate_security_score(scans):
+    if not scans:
+        return 100
+    last10 = scans[:10]
+    score = 100
+    for s in last10:
+        if s["risk_level"] == "CRITICAL":
+            score -= 20
+        elif s["risk_level"] == "HIGH":
+            score -= 10
+        elif s["risk_level"] == "MEDIUM":
+            score -= 5
+        if s["status"] == "rejected":
+            score += 5
+    return max(0, min(100, score))
+
+scans = get_scans()
 
 # Sidebar
 st.sidebar.header("📊 Pipeline Status")
-scans = get_scans()
 total = len(scans)
 critical = sum(1 for s in scans if s["risk_level"] == "CRITICAL")
 approved = sum(1 for s in scans if s["status"] in ["approved", "auto_approved"])
+pending = sum(1 for s in scans if s["status"] == "pending")
+score = calculate_security_score(scans)
 
 st.sidebar.metric("Total Scans", total)
 st.sidebar.metric("Critical Issues", critical)
 st.sidebar.metric("Approved Deploys", approved)
+st.sidebar.metric("Pending Review", pending)
+
+score_color = "🟢" if score >= 80 else "🟡" if score >= 50 else "🔴"
+st.sidebar.markdown(f"### {score_color} Security Score: **{score}/100**")
 
 if st.sidebar.button("🔄 Refresh"):
     st.rerun()
+
+# Filtreleme
+st.sidebar.header("🔍 Filter")
+filter_risk = st.sidebar.selectbox("Risk Level", ["All", "CRITICAL", "HIGH", "MEDIUM", "LOW"])
+filter_status = st.sidebar.selectbox("Status", ["All", "pending", "approved", "auto_approved", "rejected"])
 
 # Manual test scan
 st.header("🧪 Manual Scan Test")
@@ -78,10 +105,18 @@ os.system('ls ' + password)""")
 # Scan history
 st.header("📋 Scan History")
 
-if not scans:
-    st.info("No scans yet. Push code to GitHub or use the manual test above.")
+filtered_scans = scans
+if filter_risk != "All":
+    filtered_scans = [s for s in filtered_scans if s["risk_level"] == filter_risk]
+if filter_status != "All":
+    filtered_scans = [s for s in filtered_scans if s["status"] == filter_status]
+
+st.markdown(f"Showing **{len(filtered_scans)}** of **{total}** scans")
+
+if not filtered_scans:
+    st.info("No scans match the selected filters.")
 else:
-    for scan in scans:
+    for scan in filtered_scans:
         risk = scan["risk_level"]
         color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
         status_icon = {
@@ -104,12 +139,22 @@ else:
             findings = scan.get("findings", [])
             if findings:
                 st.markdown("**Findings:**")
+                
+                # Araç bazlı breakdown
+                tools = {}
+                for f in findings:
+                    tool = f.get("tool", "AI Analysis")
+                    tools[tool] = tools.get(tool, 0) + 1
+                
+                if len(tools) > 1:
+                    breakdown_str = " | ".join([f"**{t}**: {c}" for t, c in tools.items()])
+                    st.markdown(f"🔧 Tool breakdown: {breakdown_str}")
+                
                 for f in findings:
                     sev_color = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(f.get("severity"), "⚪")
                     st.markdown(f"- {sev_color} **{f.get('issue')}**: {f.get('explanation')}")
                     st.markdown(f"  💡 *Fix: {f.get('fix')}*")
 
-            # Karar bekleyen taramalar — Approve / Reject
             if scan["status"] in ["analyzed", "pending"]:
                 col_a, col_r = st.columns(2)
                 if col_a.button("✅ Approve Deploy", key=f"approve_{scan['id']}"):
@@ -120,4 +165,3 @@ else:
                     reject(scan["id"])
                     st.error("Rejected!")
                     st.rerun()
-
