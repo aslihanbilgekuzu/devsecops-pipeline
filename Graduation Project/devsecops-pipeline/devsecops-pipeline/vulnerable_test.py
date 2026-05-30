@@ -50,3 +50,4 @@ if __name__ == "__main__":
 # email test 2
 # email test 3
 password = 'newpassword123'
+# critical test
