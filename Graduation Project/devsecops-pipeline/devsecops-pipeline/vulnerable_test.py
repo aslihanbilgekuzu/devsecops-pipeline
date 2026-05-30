@@ -49,3 +49,4 @@ if __name__ == "__main__":
 # email test1
 # email test 2
 # email test 3
+password = 'newpassword123'
