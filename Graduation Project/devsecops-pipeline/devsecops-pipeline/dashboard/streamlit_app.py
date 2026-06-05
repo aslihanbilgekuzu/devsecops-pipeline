@@ -73,68 +73,46 @@ os.system('ls ' + password)""")
 test_req = st.text_area("requirements.txt (optional):", height=80)
 
 if st.button("🔍 Run Scan"):
-    with st.spinner("Analyzing..."):
+    with st.spinner("Analyzing... (this may take 20-30 seconds)"):
         try:
             payload = {
-                "repository": {"full_name": "manual/test"},
-                "after": "abc1234",
-                "pusher": {"name": "dashboard-user"},
-                "commits": [{"added": ["test.py"], "modified": []}],
                 "code": test_code,
-                "requirements": test_req
+                "requirements": test_req,
+                "repo": "manual/test",
+                "commit": "manual",
+                "pusher": "dashboard-user"
             }
             r = httpx.post(
-                f"{API_URL}/webhook",
+                f"{API_URL}/scan/manual",
                 json=payload,
-                headers={"Content-Type": "application/json", "X-GitHub-Event": "push"},
-                timeout=60
+                headers={"Content-Type": "application/json"},
+                timeout=120
             )
-
-            st.caption(f"HTTP Status: {r.status_code}")
 
             if r.status_code != 200:
                 st.error(f"Server error: {r.status_code} - {r.text}")
-                st.code(r.text, language="json")
             else:
-                try:
-                    result = r.json()
-                except Exception:
-                    st.error("Response JSON parse edilemedi")
-                    st.code(r.text)
-                    result = {}
+                result = r.json()
 
-                # Debug - ham response
-                st.markdown("**🔎 Raw API Response:**")
-                st.json(result)
-
-                # Key normalize
-                risk = (
-                    result.get("risk_level")
-                    or result.get("riskLevel")
-                    or result.get("risk")
-                    or "UNKNOWN"
-                ).upper()
-
-                deploy_rec = (
-                    result.get("deploy_recommendation")
-                    or result.get("deployRecommendation")
-                    or result.get("deploy")
-                    or result.get("recommendation")
-                    or "N/A"
-                )
-
-                summary = (
-                    result.get("summary")
-                    or result.get("message")
-                    or result.get("detail")
-                    or ""
-                )
+                risk = result.get("risk_level", "UNKNOWN").upper()
+                deploy_rec = result.get("deploy_recommendation", "N/A")
+                summary = result.get("summary", "")
+                findings = result.get("findings", [])
 
                 color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
                 st.success(f"{color} Risk Level: **{risk}**")
+                st.write(f"**Deploy Recommendation:** {deploy_rec}")
                 if summary:
                     st.info(summary)
-                st.write(f"**Deploy Recommendation:** {deploy_rec}")
+
+                if findings:
+                    st.markdown("**Findings:**")
+                    for f in findings:
+                        sev_color = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(f.get("severity"), "⚪")
+                        st.markdown(f"- {sev_color} **{f.get('issue')}**: {f.get('explanation')}")
+                        st.markdown(f"  💡 *Fix: {f.get('fix')}*")
+
+                st.rerun()
 
         except Exception as e:
             st.error(f"Error: {e}")
