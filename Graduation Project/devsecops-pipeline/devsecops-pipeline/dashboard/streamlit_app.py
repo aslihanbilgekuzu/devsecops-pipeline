@@ -66,77 +66,80 @@ filter_status = st.sidebar.selectbox("Status", ["All", "pending", "approved", "a
 
 # Manual test scan
 st.header("🧪 Manual Scan Test")
-with st.expander("Test a code snippet"):
-    test_code = st.text_area("Paste Python code here:", height=150, value="""import os
+
+test_code = st.text_area("Paste Python code here:", height=150, value="""import os
 password = 'admin123'
 os.system('ls ' + password)""")
-    test_req = st.text_area("requirements.txt (optional):", height=80)
+test_req = st.text_area("requirements.txt (optional):", height=80)
 
-    if st.button("🔍 Run Scan"):
-        with st.spinner("Analyzing..."):
-            try:
-                payload = {
-                    "repository": {"full_name": "manual/test"},
-                    "after": "abc1234",
-                    "pusher": {"name": "dashboard-user"},
-                    "commits": [{"added": ["test.py"], "modified": []}],
-                    "code": test_code,
-                    "requirements": test_req
-                }
-                r = httpx.post(
-                    f"{API_URL}/webhook",
-                    json=payload,
-                    headers={"Content-Type": "application/json", "X-GitHub-Event": "push"},
-                    timeout=60
+if st.button("🔍 Run Scan"):
+    with st.spinner("Analyzing..."):
+        try:
+            payload = {
+                "repository": {"full_name": "manual/test"},
+                "after": "abc1234",
+                "pusher": {"name": "dashboard-user"},
+                "commits": [{"added": ["test.py"], "modified": []}],
+                "code": test_code,
+                "requirements": test_req
+            }
+            r = httpx.post(
+                f"{API_URL}/webhook",
+                json=payload,
+                headers={"Content-Type": "application/json", "X-GitHub-Event": "push"},
+                timeout=60
+            )
+
+            st.caption(f"HTTP Status: {r.status_code}")
+
+            if r.status_code != 200:
+                st.error(f"Server error: {r.status_code} - {r.text}")
+                st.code(r.text, language="json")
+            else:
+                try:
+                    result = r.json()
+                except Exception:
+                    st.error("Response JSON parse edilemedi")
+                    st.code(r.text)
+                    result = {}
+
+                # Debug - ham response
+                st.markdown("**🔎 Raw API Response:**")
+                st.json(result)
+
+                # Key normalize
+                risk = (
+                    result.get("risk_level")
+                    or result.get("riskLevel")
+                    or result.get("risk")
+                    or "UNKNOWN"
+                ).upper()
+
+                deploy_rec = (
+                    result.get("deploy_recommendation")
+                    or result.get("deployRecommendation")
+                    or result.get("deploy")
+                    or result.get("recommendation")
+                    or "N/A"
                 )
 
-                # ── DEBUG: backend'den ne döndüğünü görmek için ──
-                st.caption(f"HTTP Status: {r.status_code}")
-                try:
-                    raw = r.json()
-                except Exception:
-                    raw = r.text
-                with st.expander("🔎 Raw API Response (debug)"):
-                    st.json(raw)
-                # ──────────────────────────────────────────────────
+                summary = (
+                    result.get("summary")
+                    or result.get("message")
+                    or result.get("detail")
+                    or ""
+                )
 
-                if r.status_code != 200:
-                    st.error(f"Server error: {r.status_code} - {r.text}")
-                else:
-                    result = raw if isinstance(raw, dict) else {}
+                color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
+                st.success(f"{color} Risk Level: **{risk}**")
+                if summary:
+                    st.info(summary)
+                st.write(f"**Deploy Recommendation:** {deploy_rec}")
 
-                    # Backend bazen scan objesini, bazen sarmalı döndürebilir
-                    # Olası key isimleri normalize ediliyor
-                    risk = (
-                        result.get("risk_level")
-                        or result.get("riskLevel")
-                        or result.get("risk")
-                        or "UNKNOWN"
-                    ).upper()
+        except Exception as e:
+            st.error(f"Error: {e}")
 
-                    deploy_rec = (
-                        result.get("deploy_recommendation")
-                        or result.get("deployRecommendation")
-                        or result.get("deploy")
-                        or result.get("recommendation")
-                        or "N/A"
-                    )
-
-                    summary = (
-                        result.get("summary")
-                        or result.get("message")
-                        or result.get("detail")
-                        or ""
-                    )
-
-                    color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
-                    st.success(f"{color} Risk Level: **{risk}**")
-                    if summary:
-                        st.info(summary)
-                    st.write(f"**Deploy Recommendation:** {deploy_rec}")
-
-            except Exception as e:
-                st.error(f"Error: {e}")
+st.divider()
 
 # Scan history
 st.header("📋 Scan History")
