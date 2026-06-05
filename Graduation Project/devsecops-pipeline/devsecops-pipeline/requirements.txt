@@ -8,5 +8,6 @@ pip-audit==2.7.3
 streamlit==1.39.0
 sqlalchemy==2.0.36
 aiosqlite==0.20.0
-psycopg2-binary
-flake8
+psycopg2-binary==2.9.9
+flake8==7.0.0
+semgrep==1.50.0
