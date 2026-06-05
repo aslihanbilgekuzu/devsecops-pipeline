@@ -319,3 +319,57 @@ async def rollback_scan(scan_id: int):
         "rolled_back_from_commit": current_scan.commit,
         "rolled_back_to_commit": rollback_commit
     }
+
+# Bu kodu main.py'de son @app.post("/scans/{scan_id}/rollback") fonksiyonunun ALTINA ekle
+
+@app.post("/scan/manual")
+async def manual_scan(request: Request):
+    """Dashboard'dan manuel scan için senkron endpoint - sonucu direkt döner"""
+    payload = await request.json()
+    
+    code_sample = payload.get("code", "")
+    requirements = payload.get("requirements", "")
+    repo = payload.get("repo", "manual/test")
+    commit = payload.get("commit", "manual")[:7]
+    pusher = payload.get("pusher", "dashboard-user")
+
+    bandit = run_bandit(code_sample)
+    pip_audit = run_pip_audit(requirements)
+    flake8 = run_flake8(code_sample)
+    gitleaks = run_gitleaks(code_sample)
+    semgrep = run_semgrep(code_sample)
+    ai_result = interpret_findings(bandit, pip_audit, code_sample, flake8, gitleaks, semgrep)
+
+    risk_level = ai_result.get("risk_level", "UNKNOWN")
+    deploy_recommendation = ai_result.get("deploy_recommendation", "BLOCK")
+
+    if risk_level in ["LOW", "MEDIUM"] and deploy_recommendation == "APPROVE":
+        status = "auto_approved"
+    else:
+        status = "pending"
+
+    session = Session()
+    scan = ScanResult(
+        repo=repo,
+        commit=commit,
+        pusher=pusher,
+        risk_level=risk_level,
+        summary=ai_result.get("summary", ""),
+        findings=json.dumps(ai_result.get("findings", [])),
+        deploy_recommendation=deploy_recommendation,
+        status=status
+    )
+    session.add(scan)
+    session.commit()
+    scan_id = scan.id
+    session.close()
+
+    return {
+        "scan_id": scan_id,
+        "risk_level": risk_level,
+        "deploy_recommendation": deploy_recommendation,
+        "summary": ai_result.get("summary", ""),
+        "findings": ai_result.get("findings", []),
+        "status": status
+    }
+
