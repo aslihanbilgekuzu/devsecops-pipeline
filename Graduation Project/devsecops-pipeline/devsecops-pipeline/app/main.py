@@ -17,7 +17,6 @@ load_dotenv()
 app = FastAPI(title="DevSecOps Pipeline")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# Database setup
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///pipeline.db")
 engine = create_engine(DATABASE_URL)
 Base = declarative_base()
@@ -54,7 +53,6 @@ async def trigger_render_deploy():
         print(f"Deploy hook error (non-fatal): {e}")
 
 async def trigger_rollback_deploy():
-    """Render API üzerinden önceki deploy'u yeniden tetikler."""
     api_key = os.getenv("RENDER_API_KEY")
     service_id = os.getenv("RENDER_SERVICE_ID", "srv-d88qms0jo6nc73d7ctkg")
     if not api_key:
@@ -69,7 +67,6 @@ async def trigger_rollback_deploy():
             print(f"Rollback deploy triggered: {r.status_code}")
     except Exception as e:
         print(f"Rollback deploy error (non-fatal): {e}")
-
 
 def send_critical_alert_email(repo: str, commit: str, risk_level: str, findings: list):
     gmail_user = os.getenv("GMAIL_USER")
@@ -93,13 +90,13 @@ Findings:
     msg["To"] = "azraaoz891@gmail.com"
     msg["Subject"] = f"🔴 CRITICAL Alert: {repo} - {commit[:7]}"
     msg.attach(MIMEText(body, "plain"))
-
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(gmail_user, gmail_password)
             server.send_message(msg)
     except Exception as e:
         print(f"Email error: {e}")
+
 async def post_github_pr_comment(repo: str, pr_number: int, body: str):
     token = os.getenv("GITHUB_TOKEN")
     if not token:
@@ -121,7 +118,6 @@ async def fetch_file_content(repo: str, commit: str, filename: str) -> str:
         "Accept": "application/vnd.github.v3+json"
     }
     url = f"https://api.github.com/repos/{repo}/contents/{filename}?ref={commit}"
-    
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.get(url, headers=headers)
@@ -136,7 +132,6 @@ async def run_analysis(payload: dict, event: str):
     repo = payload.get("repository", {}).get("full_name", "unknown")
     commit = payload.get("after", "unknown")
     pusher = payload.get("pusher", {}).get("name", "unknown")
-
     code_sample = payload.get("code", "")
     requirements = payload.get("requirements", "")
 
@@ -154,7 +149,6 @@ async def run_analysis(payload: dict, event: str):
                 code_sample += f"# Changed files: {', '.join(changed_files[:5])}\n"
 
     commit = commit[:7]
-
     bandit = run_bandit(code_sample)
     pip_audit = run_pip_audit(requirements if requirements else "")
     flake8 = run_flake8(code_sample)
@@ -174,14 +168,10 @@ async def run_analysis(payload: dict, event: str):
 
     session = Session()
     scan = ScanResult(
-        repo=repo,
-        commit=commit,
-        pusher=pusher,
-        risk_level=risk_level,
+        repo=repo, commit=commit, pusher=pusher, risk_level=risk_level,
         summary=ai_result.get("summary", ""),
         findings=json.dumps(ai_result.get("findings", [])),
-        deploy_recommendation=deploy_recommendation,
-        status=status
+        deploy_recommendation=deploy_recommendation, status=status
     )
     session.add(scan)
     session.commit()
@@ -213,19 +203,15 @@ def root():
 async def webhook(request: Request, background_tasks: BackgroundTasks):
     payload_bytes = await request.body()
     signature = request.headers.get("X-Hub-Signature-256", "")
-
     if signature and not verify_signature(payload_bytes, signature):
         raise HTTPException(status_code=401, detail="Invalid signature")
-
     try:
         payload = json.loads(payload_bytes)
     except:
         payload = await request.json()
     event = request.headers.get("X-GitHub-Event", "push")
-
     if event not in ["push", "pull_request"]:
         return {"message": "Event ignored"}
-
     background_tasks.add_task(run_analysis, payload, event)
     return {"message": "Webhook received, analysis started"}
 
@@ -288,82 +274,56 @@ def reject_scan(scan_id: int):
 @app.post("/scans/{scan_id}/rollback")
 async def rollback_scan(scan_id: int):
     session = Session()
-
-    # Mevcut scan'i bul
     current_scan = session.query(ScanResult).filter(ScanResult.id == scan_id).first()
     if not current_scan:
         session.close()
         raise HTTPException(status_code=404, detail="Scan not found")
-
-    # Bu scan'den önceki son temiz scan'i bul
     previous_safe = session.query(ScanResult).filter(
         ScanResult.id < scan_id,
         ScanResult.status.in_(["approved", "auto_approved"])
     ).order_by(ScanResult.id.desc()).first()
-
     if not previous_safe:
         session.close()
         raise HTTPException(status_code=404, detail="No previous safe deployment found to roll back to")
-
-    # Mevcut scan'i rolled_back olarak işaretle
     current_scan.status = "rolled_back"
     rollback_commit = previous_safe.commit
     session.commit()
     session.close()
-
-    # Render'da yeniden deploy tetikle
     await trigger_rollback_deploy()
-
     return {
-        "message": f"Rollback triggered successfully",
+        "message": "Rollback triggered successfully",
         "rolled_back_from_commit": current_scan.commit,
         "rolled_back_to_commit": rollback_commit
     }
 
-# Bu kodu main.py'de son @app.post("/scans/{scan_id}/rollback") fonksiyonunun ALTINA ekle
-
 @app.post("/scan/manual")
 async def manual_scan(request: Request):
-    """Dashboard'dan manuel scan için senkron endpoint - sonucu direkt döner"""
     payload = await request.json()
-    
     code_sample = payload.get("code", "")
     requirements = payload.get("requirements", "")
     repo = payload.get("repo", "manual/test")
     commit = payload.get("commit", "manual")[:7]
     pusher = payload.get("pusher", "dashboard-user")
-
     bandit = run_bandit(code_sample)
     pip_audit = run_pip_audit(requirements)
     flake8 = run_flake8(code_sample)
     gitleaks = run_gitleaks(code_sample)
     semgrep = run_semgrep(code_sample)
     ai_result = interpret_findings(bandit, pip_audit, code_sample, flake8, gitleaks, semgrep)
-
     risk_level = ai_result.get("risk_level", "UNKNOWN")
     deploy_recommendation = ai_result.get("deploy_recommendation", "BLOCK")
-
-    if risk_level in ["LOW", "MEDIUM"] and deploy_recommendation == "APPROVE":
-        status = "auto_approved"
-    else:
-        status = "pending"
-
+    status = "auto_approved" if risk_level in ["LOW", "MEDIUM"] and deploy_recommendation == "APPROVE" else "pending"
     session = Session()
     scan = ScanResult(
-        repo=repo,
-        commit=commit,
-        pusher=pusher,
-        risk_level=risk_level,
+        repo=repo, commit=commit, pusher=pusher, risk_level=risk_level,
         summary=ai_result.get("summary", ""),
         findings=json.dumps(ai_result.get("findings", [])),
-        deploy_recommendation=deploy_recommendation,
-        status=status
+        deploy_recommendation=deploy_recommendation, status=status
     )
     session.add(scan)
     session.commit()
     scan_id = scan.id
     session.close()
-
     return {
         "scan_id": scan_id,
         "risk_level": risk_level,
@@ -372,4 +332,3 @@ async def manual_scan(request: Request):
         "findings": ai_result.get("findings", []),
         "status": status
     }
-
