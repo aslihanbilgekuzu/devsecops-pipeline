@@ -10,7 +10,7 @@ RUN curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/git
 # Python bağımlılıkları
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install semgrep
+RUN pip install semgrep==1.50.0
 # Uygulama dosyaları
 COPY . .
 # Port
