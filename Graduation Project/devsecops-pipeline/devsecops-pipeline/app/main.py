@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import hmac, hashlib, json, os, base64
 from dotenv import load_dotenv
-from app.analyzer import run_bandit, run_pip_audit
+from app.analyzer import run_bandit, run_pip_audit, run_flake8, run_gitleaks, run_semgrep
 from app.ai_interpreter import interpret_findings
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -51,7 +51,6 @@ async def trigger_render_deploy():
         print(f"Deploy hook error (non-fatal): {e}")
 
 async def trigger_rollback_deploy():
-    """Render API üzerinden önceki deploy'u yeniden tetikler."""
     api_key = os.getenv("RENDER_API_KEY")
     service_id = os.getenv("RENDER_SERVICE_ID", "srv-d88qms0jo6nc73d7ctkg")
     if not api_key:
@@ -123,7 +122,10 @@ async def run_analysis(payload: dict, event: str):
 
     bandit = run_bandit(code_sample)
     pip_audit = run_pip_audit(requirements if requirements else "")
-    ai_result = interpret_findings(bandit, pip_audit, code_sample)
+    flake8 = run_flake8(code_sample)
+    gitleaks = run_gitleaks(code_sample)
+    semgrep = run_semgrep(code_sample)
+    ai_result = interpret_findings(bandit, pip_audit, code_sample, flake8, gitleaks, semgrep)
 
     risk_level = ai_result.get("risk_level", "UNKNOWN")
     deploy_recommendation = ai_result.get("deploy_recommendation", "BLOCK")
@@ -250,37 +252,28 @@ def reject_scan(scan_id: int):
 @app.post("/scans/{scan_id}/rollback")
 async def rollback_scan(scan_id: int):
     session = Session()
-
-    # Mevcut scan'i bul
     current_scan = session.query(ScanResult).filter(ScanResult.id == scan_id).first()
     if not current_scan:
         session.close()
         raise HTTPException(status_code=404, detail="Scan not found")
-
-    # Bu scan'den önceki son temiz scan'i bul
     previous_safe = session.query(ScanResult).filter(
         ScanResult.id < scan_id,
         ScanResult.status.in_(["approved", "auto_approved"])
     ).order_by(ScanResult.id.desc()).first()
-
     if not previous_safe:
         session.close()
         raise HTTPException(status_code=404, detail="No previous safe deployment found to roll back to")
-
-    # Mevcut scan'i rolled_back olarak işaretle
     current_scan.status = "rolled_back"
     rollback_commit = previous_safe.commit
     session.commit()
     session.close()
-
-    # Render'da yeniden deploy tetikle
     await trigger_rollback_deploy()
-
     return {
-        "message": f"Rollback triggered successfully",
+        "message": "Rollback triggered successfully",
         "rolled_back_from_commit": current_scan.commit,
         "rolled_back_to_commit": rollback_commit
     }
+
 @app.post("/scan/manual")
 async def manual_scan(request: Request):
     payload = await request.json()
