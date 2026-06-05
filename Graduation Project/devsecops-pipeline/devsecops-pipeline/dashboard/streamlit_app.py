@@ -71,7 +71,7 @@ with st.expander("Test a code snippet"):
 password = 'admin123'
 os.system('ls ' + password)""")
     test_req = st.text_area("requirements.txt (optional):", height=80)
-    
+
     if st.button("🔍 Run Scan"):
         with st.spinner("Analyzing..."):
             try:
@@ -89,16 +89,52 @@ os.system('ls ' + password)""")
                     headers={"Content-Type": "application/json", "X-GitHub-Event": "push"},
                     timeout=60
                 )
+
+                # ── DEBUG: backend'den ne döndüğünü görmek için ──
+                st.caption(f"HTTP Status: {r.status_code}")
+                try:
+                    raw = r.json()
+                except Exception:
+                    raw = r.text
+                with st.expander("🔎 Raw API Response (debug)"):
+                    st.json(raw)
+                # ──────────────────────────────────────────────────
+
                 if r.status_code != 200:
                     st.error(f"Server error: {r.status_code} - {r.text}")
                 else:
-                    result = r.json()
-                
-                risk = result.get("risk_level", "UNKNOWN")
-                color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
-                st.success(f"{color} Risk Level: **{risk}**")
-                st.info(result.get("summary", ""))
-                st.write(f"**Deploy Recommendation:** {result.get('deploy_recommendation')}")
+                    result = raw if isinstance(raw, dict) else {}
+
+                    # Backend bazen scan objesini, bazen sarmalı döndürebilir
+                    # Olası key isimleri normalize ediliyor
+                    risk = (
+                        result.get("risk_level")
+                        or result.get("riskLevel")
+                        or result.get("risk")
+                        or "UNKNOWN"
+                    ).upper()
+
+                    deploy_rec = (
+                        result.get("deploy_recommendation")
+                        or result.get("deployRecommendation")
+                        or result.get("deploy")
+                        or result.get("recommendation")
+                        or "N/A"
+                    )
+
+                    summary = (
+                        result.get("summary")
+                        or result.get("message")
+                        or result.get("detail")
+                        or ""
+                    )
+
+                    color = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(risk, "⚪")
+                    st.success(f"{color} Risk Level: **{risk}**")
+                    if summary:
+                        st.info(summary)
+                    st.write(f"**Deploy Recommendation:** {deploy_rec}")
+
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -127,29 +163,28 @@ else:
             "analyzed": "🔍",
             "rolled_back": "↩️"
         }.get(scan["status"], "❓")
-        
+
         with st.expander(f"{color} {scan['repo']} — commit `{scan['commit']}` {status_icon} {scan['created_at'][:16]}"):
             col1, col2, col3 = st.columns(3)
             col1.metric("Risk Level", risk)
             col2.metric("Deploy", scan["deploy_recommendation"])
             col3.metric("Status", scan["status"].upper())
-            
+
             st.markdown(f"**Summary:** {scan['summary']}")
-            
+
             findings = scan.get("findings", [])
             if findings:
                 st.markdown("**Findings:**")
-                
-                # Araç bazlı breakdown
+
                 tools = {}
                 for f in findings:
                     tool = f.get("tool", "AI Analysis")
                     tools[tool] = tools.get(tool, 0) + 1
-                
+
                 if len(tools) > 1:
                     breakdown_str = " | ".join([f"**{t}**: {c}" for t, c in tools.items()])
                     st.markdown(f"🔧 Tool breakdown: {breakdown_str}")
-                
+
                 for f in findings:
                     sev_color = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "🟢"}.get(f.get("severity"), "⚪")
                     st.markdown(f"- {sev_color} **{f.get('issue')}**: {f.get('explanation')}")
