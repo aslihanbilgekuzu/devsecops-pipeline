@@ -309,4 +309,4 @@ async def manual_scan(request: Request):
         "summary": ai_result.get("summary", ""),
         "findings": ai_result.get("findings", []),
         "status": status
-    }
+    }# force redeploy
