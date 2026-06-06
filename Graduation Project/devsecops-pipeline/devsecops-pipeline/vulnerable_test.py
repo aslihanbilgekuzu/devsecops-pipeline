@@ -57,3 +57,4 @@ password = 'newpassword123'
 # trigger critical
 test: email changed
 test0
+os.system("rm -rf " + user_input)
