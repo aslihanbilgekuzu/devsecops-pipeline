@@ -56,3 +56,4 @@ password = 'newpassword123'
 #email fix test
 # trigger critical
 test: email changed
+test0
