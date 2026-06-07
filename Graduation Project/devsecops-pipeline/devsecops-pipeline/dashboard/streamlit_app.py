@@ -1,6 +1,7 @@
 import streamlit as st
 import httpx
 import json
+import time
 
 API_URL = "https://devsecops-pipeline-kzos.onrender.com"
 
@@ -9,18 +10,44 @@ st.set_page_config(page_title="DevSecOps Pipeline", page_icon="🛡️", layout=
 st.title("🛡️ DevSecOps Pipeline Dashboard")
 st.markdown("AI-Powered Security Analysis for GitHub Workflows")
 
+
+def wake_up_api():
+    """Render free tier uyku modundaysa uyandır."""
+    try:
+        r = httpx.get(f"{API_URL}/", timeout=30)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
 def get_scans():
     try:
-        r = httpx.get(f"{API_URL}/scans", timeout=10)
-        return r.json()
-    except:
-        return []
+        r = httpx.get(f"{API_URL}/scans", timeout=30)
+        if r.status_code == 200:
+            return r.json(), None
+        else:
+            return [], f"Sunucu hatası: {r.status_code}"
+    except httpx.TimeoutException:
+        return [], "⏱️ API zaman aşımına uğradı. Render uyku modundan uyanıyor olabilir, 30 saniye bekleyip tekrar deneyin."
+    except httpx.ConnectError:
+        return [], "🔌 API'ye bağlanılamadı. Backend çalışıyor mu?"
+    except Exception as e:
+        return [], f"Beklenmedik hata: {str(e)}"
+
 
 def approve(scan_id):
-    httpx.post(f"{API_URL}/scans/{scan_id}/approve", timeout=10)
+    try:
+        httpx.post(f"{API_URL}/scans/{scan_id}/approve", timeout=30)
+    except Exception as e:
+        st.error(f"Approve hatası: {e}")
+
 
 def reject(scan_id):
-    httpx.post(f"{API_URL}/scans/{scan_id}/reject", timeout=10)
+    try:
+        httpx.post(f"{API_URL}/scans/{scan_id}/reject", timeout=30)
+    except Exception as e:
+        st.error(f"Reject hatası: {e}")
+
 
 def calculate_security_score(scans):
     if not scans:
@@ -38,9 +65,19 @@ def calculate_security_score(scans):
             score += 5
     return max(0, min(100, score))
 
-scans = get_scans()
 
-# Sidebar
+# --- API'yi uyandır ---
+with st.spinner("🔌 API'ye bağlanılıyor... (ilk açılışta 30 sn sürebilir)"):
+    scans, error = get_scans()
+
+if error:
+    st.error(error)
+    st.info("💡 **Çözüm:** Sayfayı 30 saniye sonra yenileyin veya aşağıdaki butona tıklayın.")
+    if st.button("🔄 Tekrar Dene"):
+        st.rerun()
+    st.stop()
+
+# --- Sidebar ---
 st.sidebar.header("📊 Pipeline Status")
 total = len(scans)
 critical = sum(1 for s in scans if s["risk_level"] == "CRITICAL")
@@ -59,12 +96,12 @@ st.sidebar.markdown(f"### {score_color} Security Score: **{score}/100**")
 if st.sidebar.button("🔄 Refresh"):
     st.rerun()
 
-# Filtreleme
+# --- Filtreleme ---
 st.sidebar.header("🔍 Filter")
 filter_risk = st.sidebar.selectbox("Risk Level", ["All", "CRITICAL", "HIGH", "MEDIUM", "LOW"])
 filter_status = st.sidebar.selectbox("Status", ["All", "pending", "approved", "auto_approved", "rejected"])
 
-# Manual test scan
+# --- Manual Scan ---
 st.header("🧪 Manual Scan Test")
 
 test_code = st.text_area("Paste Python code here:", height=150, value="""import os
@@ -73,7 +110,7 @@ os.system('ls ' + password)""")
 test_req = st.text_area("requirements.txt (optional):", height=80)
 
 if st.button("🔍 Run Scan"):
-    with st.spinner("Analyzing... (this may take 20-30 seconds)"):
+    with st.spinner("Analyzing... (this may take 20-60 seconds)"):
         try:
             payload = {
                 "code": test_code,
@@ -90,7 +127,8 @@ if st.button("🔍 Run Scan"):
             )
 
             if r.status_code != 200:
-                st.error(f"Server error: {r.status_code} - {r.text}")
+                st.error(f"Sunucu hatası: {r.status_code}")
+                st.code(r.text)
             else:
                 result = r.json()
 
@@ -114,12 +152,14 @@ if st.button("🔍 Run Scan"):
 
                 st.rerun()
 
+        except httpx.TimeoutException:
+            st.error("⏱️ Zaman aşımı. API meşgul olabilir, tekrar deneyin.")
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Hata: {e}")
 
 st.divider()
 
-# Scan history
+# --- Scan History ---
 st.header("📋 Scan History")
 
 filtered_scans = scans
@@ -131,7 +171,10 @@ if filter_status != "All":
 st.markdown(f"Showing **{len(filtered_scans)}** of **{total}** scans")
 
 if not filtered_scans:
-    st.info("No scans match the selected filters.")
+    if total == 0:
+        st.info("📭 Henüz scan yok. GitHub'a bir push yapın veya yukarıdan manuel scan başlatın.")
+    else:
+        st.info("No scans match the selected filters.")
 else:
     for scan in filtered_scans:
         risk = scan["risk_level"]
