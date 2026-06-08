@@ -42,3 +42,4 @@ if __name__ == "__main__":
     log_event(f"Total calculated: {total}")
 
 #test 1
+test2
